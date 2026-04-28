@@ -5,8 +5,6 @@ import streamlit as st
 # CONFIG
 # =============================
 API_BASE = "https://movie-recommender-2-q91v.onrender.com"
-# API_BASE = "http://127.0.0.1:8000"
-
 TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
@@ -101,7 +99,7 @@ def api_get_json(path, params=None):
         return None, str(e)
 
 # =============================
-# NETFLIX GRID (FIXED)
+# NETFLIX GRID
 # =============================
 def poster_grid(cards, cols=6):
     if not cards:
@@ -218,22 +216,22 @@ elif st.session_state.view == "details":
     tmdb_id = st.session_state.selected_tmdb_id
     data, err = api_get_json(f"/movie/id/{tmdb_id}")
 
-    if err:
-        st.error(err)
+    if err or not data:
+        st.error(err or "No data found")
         st.stop()
 
     left, right = st.columns([1, 2])
 
     with left:
         if data.get("poster_url"):
-            st.image(data["poster_url"], width="stretch")
+            st.image(data["poster_url"], use_column_width=True)
 
     with right:
         st.subheader(data.get("title"))
         st.write(data.get("overview"))
 
     if data.get("backdrop_url"):
-        st.image(data["backdrop_url"], width="stretch")
+        st.image(data["backdrop_url"], use_column_width=True)
 
     st.divider()
     st.subheader("Recommendations")

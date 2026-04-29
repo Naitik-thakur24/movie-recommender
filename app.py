@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+import time   # 🔥 for cache busting
 
 # =============================
 # CONFIG
@@ -10,7 +11,7 @@ TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
 
 # =============================
-# NETFLIX CSS
+# CSS (NETFLIX STYLE)
 # =============================
 st.markdown("""
 <style>
@@ -53,7 +54,7 @@ a { text-decoration: none !important; }
 """, unsafe_allow_html=True)
 
 # =============================
-# SESSION STATE
+# STATE
 # =============================
 if "view" not in st.session_state:
     st.session_state.view = "home"
@@ -78,7 +79,7 @@ if qp_id:
 
 def goto_home():
     st.session_state.view = "home"
-    st.query_params.clear()   # 🔥 clear URL params
+    st.query_params.clear()
     st.rerun()
 
 # =============================
@@ -103,11 +104,11 @@ def api_get_json_cached(path, params):
         return None, str(e)
 
 # =============================
-# GRID
+# GRID UI
 # =============================
 def poster_grid(cards, cols=6):
     if not cards:
-        st.info("No movies found.")
+        st.warning("No movies found 😢")
         return
 
     rows = (len(cards) + cols - 1) // cols
@@ -165,9 +166,13 @@ if st.session_state.view == "home":
 
     query = st.text_input("Search movies")
 
-    # 🔥 SEARCH (no cache → FIXED)
-    if query:
-        data, err = api_get_json_no_cache("/tmdb/search", {"query": query})
+    # 🔥 SEARCH (NO CACHE + TIMESTAMP FIX)
+    if query and len(query) > 2:
+        with st.spinner("Searching movies..."):
+            data, err = api_get_json_no_cache(
+                "/tmdb/search",
+                {"query": query, "t": time.time()}  # 🔥 cache breaker
+            )
 
         if err:
             st.error(err)

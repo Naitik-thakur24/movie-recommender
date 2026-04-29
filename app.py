@@ -14,24 +14,20 @@ st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wid
 # =============================
 st.markdown("""
 <style>
-body {
-    background-color: #0e1117;
-}
-.block-container {
-    max-width: 1500px;
-    padding-top: 1rem;
-}
+body { background-color: #0e1117; }
+.block-container { max-width: 1500px; padding-top: 1rem; }
+
 .movie-card {
     position: relative;
     border-radius: 12px;
     overflow: hidden;
     cursor: pointer;
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .movie-card:hover {
     transform: scale(1.08);
     z-index: 10;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.7);
 }
 .movie-card img {
     width: 100%;
@@ -44,27 +40,29 @@ body {
     padding: 10px;
     background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
     color: white;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
 }
+
 .section-title {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     font-weight: 600;
-    margin: 10px 0;
+    margin: 15px 0;
 }
-a {
-    text-decoration: none !important;
-}
+a { text-decoration: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # =============================
-# STATE + ROUTING
+# SESSION STATE
 # =============================
 if "view" not in st.session_state:
     st.session_state.view = "home"
 if "selected_tmdb_id" not in st.session_state:
     st.session_state.selected_tmdb_id = None
 
+# =============================
+# ROUTING
+# =============================
 qp_view = st.query_params.get("view")
 qp_id = st.query_params.get("id")
 
@@ -80,26 +78,32 @@ if qp_id:
 
 def goto_home():
     st.session_state.view = "home"
-    st.query_params["view"] = "home"
-    if "id" in st.query_params:
-        del st.query_params["id"]
+    st.query_params.clear()   # 🔥 clear URL params
     st.rerun()
 
 # =============================
-# API
+# API FUNCTIONS
 # =============================
-@st.cache_data(ttl=30)
-def api_get_json(path, params=None):
+
+# 🔥 NO CACHE (search)
+def api_get_json_no_cache(path, params=None):
     try:
         r = requests.get(f"{API_BASE}{path}", params=params, timeout=20)
-        if r.status_code >= 400:
-            return None, "API Error"
+        return r.json(), None
+    except Exception as e:
+        return None, str(e)
+
+# ✅ CACHE (home, details)
+@st.cache_data(ttl=30)
+def api_get_json_cached(path, params):
+    try:
+        r = requests.get(f"{API_BASE}{path}", params=params, timeout=20)
         return r.json(), None
     except Exception as e:
         return None, str(e)
 
 # =============================
-# NETFLIX GRID
+# GRID
 # =============================
 def poster_grid(cards, cols=6):
     if not cards:
@@ -133,30 +137,6 @@ def poster_grid(cards, cols=6):
                         </div>
                     </a>
                     """, unsafe_allow_html=True)
-                else:
-                    st.write("No Image")
-
-# =============================
-# PARSER
-# =============================
-def parse_tmdb_search_to_cards(data, keyword):
-    keyword = keyword.lower()
-    items = []
-
-    if isinstance(data, dict) and "results" in data:
-        for m in data["results"]:
-            if m.get("id") and m.get("title"):
-                items.append({
-                    "tmdb_id": m["id"],
-                    "title": m["title"],
-                    "poster_url": f"{TMDB_IMG}{m['poster_path']}" if m.get("poster_path") else None
-                })
-
-    elif isinstance(data, list):
-        items = data
-
-    filtered = [x for x in items if keyword in x["title"].lower()]
-    return filtered if filtered else items
 
 # =============================
 # SIDEBAR
@@ -185,20 +165,28 @@ if st.session_state.view == "home":
 
     query = st.text_input("Search movies")
 
+    # 🔥 SEARCH (no cache → FIXED)
     if query:
-        data, err = api_get_json("/tmdb/search", {"query": query})
+        data, err = api_get_json_no_cache("/tmdb/search", {"query": query})
 
         if err:
             st.error(err)
         else:
-            cards = parse_tmdb_search_to_cards(data, query)
+            results = data.get("results", [])
+            cards = [{
+                "tmdb_id": m["id"],
+                "title": m["title"],
+                "poster_url": f"{TMDB_IMG}{m['poster_path']}" if m.get("poster_path") else None
+            } for m in results if m.get("id") and m.get("title")]
+
             poster_grid(cards, cols)
 
         st.stop()
 
+    # 🔥 HOME DATA (cached)
     st.markdown(f"<div class='section-title'>{category.replace('_',' ').title()}</div>", unsafe_allow_html=True)
 
-    cards, err = api_get_json("/home", {"category": category})
+    cards, err = api_get_json_cached("/home", {"category": category})
 
     if err:
         st.error(err)
@@ -214,7 +202,7 @@ elif st.session_state.view == "details":
         goto_home()
 
     tmdb_id = st.session_state.selected_tmdb_id
-    data, err = api_get_json(f"/movie/id/{tmdb_id}")
+    data, err = api_get_json_cached(f"/movie/id/{tmdb_id}", {})
 
     if err or not data:
         st.error(err or "No data found")
@@ -236,5 +224,5 @@ elif st.session_state.view == "details":
     st.divider()
     st.subheader("Recommendations")
 
-    recs, _ = api_get_json("/recommend/genre", {"tmdb_id": tmdb_id})
+    recs, _ = api_get_json_cached("/recommend/genre", {"tmdb_id": tmdb_id})
     poster_grid(recs, cols)
